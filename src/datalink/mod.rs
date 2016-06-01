@@ -10,6 +10,7 @@
 
 use std::io;
 use std::option::Option;
+use std::time::Duration;
 
 use packet::ethernet::{EtherType, EthernetPacket, MutableEthernetPacket};
 use util::NetworkInterface;
@@ -58,6 +59,9 @@ pub enum ChannelType {
     Layer3(EtherType),
 }
 
+/// Type of timestamped Ethernet packet (Linux only)
+pub struct TimestampedEthernetPacket<'a>(Duration, EthernetPacket<'a>);
+
 /// A channel for sending and receiving at the data link layer
 ///
 /// NOTE: It is important to always include a catch-all variant in match statements using this
@@ -72,6 +76,11 @@ pub enum ChannelType {
 pub enum Channel {
     /// A datalink channel which sends and receives Ethernet packets
     Ethernet(Box<EthernetDataLinkSender>, Box<EthernetDataLinkReceiver>),
+
+    // FIXME documentation sucks here
+    /// A datalink channel which receives timestamped Ethernet packets
+    /// and sends non-timestamped Ethernet packets.
+    TimestampedEthernet(Box<EthernetDataLinkSender>, Box<TimestampedEthernetDataLinkReceiver>),
 
     /// This variant should never be used
     ///
@@ -106,7 +115,7 @@ impl Default for Config {
             write_buffer_size: 4096,
             read_buffer_size: 4096,
             channel_type: ChannelType::Layer2,
-            bpf_fd_attempts: 1000
+            bpf_fd_attempts: 1000,
         }
     }
 }
@@ -183,3 +192,6 @@ macro_rules! dlr {
 }
 
 dlr!(EthernetDataLinkReceiver, EthernetDataLinkChannelIterator, EthernetPacket);
+dlr!(TimestampedEthernetDataLinkReceiver,
+     TimestampedEthernetDataLinkChannelIterator,
+     TimestampedEthernetPacket);

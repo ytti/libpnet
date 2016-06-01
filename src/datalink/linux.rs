@@ -18,8 +18,14 @@ use std::sync::Arc;
 
 use bindings::linux;
 use datalink;
-use datalink::Channel::Ethernet;
-use datalink::{EthernetDataLinkChannelIterator, EthernetDataLinkReceiver, EthernetDataLinkSender};
+use datalink::Channel::{Ethernet,
+                        TimestampedEthernet};
+use datalink::{EthernetDataLinkChannelIterator,
+               EthernetDataLinkReceiver,
+               EthernetDataLinkSender,
+               TimestampedEthernetDataLinkChannelIterator,
+               TimestampedEthernetDataLinkReceiver,
+               TimestampedEthernetPacket};
 use datalink::ChannelType::{Layer2, Layer3};
 use internal;
 use packet::Packet;
@@ -52,6 +58,9 @@ pub struct Config {
     /// The size of buffer to use when reading packets. Defaults to 4096
     pub read_buffer_size: usize,
 
+    /// Specifies whether timestamps should be received. Defaults to false.
+    pub receive_hardware_timestamps: bool,
+
     /// Specifies whether to read packets at the datalink layer or network layer.
     /// NOTE FIXME Currently ignored
     /// Defaults to Layer2
@@ -64,6 +73,7 @@ impl<'a> From<&'a datalink::Config> for Config {
             write_buffer_size: config.write_buffer_size,
             read_buffer_size: config.read_buffer_size,
             channel_type: config.channel_type,
+            receive_hardware_timestamps: false,
         }
     }
 }
@@ -74,6 +84,7 @@ impl Default for Config {
             write_buffer_size: 4096,
             read_buffer_size: 4096,
             channel_type: Layer2,
+            receive_hardware_timestamps: false,
         }
     }
 }
@@ -138,7 +149,11 @@ pub fn channel(network_interface: &NetworkInterface, config: &Config)
         _channel_type: config.channel_type,
     });
 
-    Ok(Ethernet(sender, receiver))
+    if config.receive_hardware_timestamps {
+        Ok(TimestampedEthernet(sender, receiver))
+    } else {
+        Ok(Ethernet(sender, receiver))
+    }
 }
 
 struct DataLinkSenderImpl {
@@ -211,6 +226,13 @@ impl EthernetDataLinkReceiver for DataLinkReceiverImpl {
     }
 }
 
+impl TimestampedEthernetDataLinkReceiver for DataLinkReceiverImpl {
+    // FIXME Layer 3
+    fn iter<'a>(&'a mut self) -> Box<TimestampedEthernetDataLinkChannelIterator + 'a> {
+        Box::new(DataLinkChannelIteratorImpl { pc: self })
+    }
+}
+
 struct DataLinkChannelIteratorImpl<'a> {
     pc: &'a mut DataLinkReceiverImpl,
 }
@@ -223,5 +245,26 @@ impl<'a> EthernetDataLinkChannelIterator<'a> for DataLinkChannelIteratorImpl<'a>
             Ok(len) => Ok(EthernetPacket::new(&self.pc.read_buffer[0..len]).unwrap()),
             Err(e) => Err(e),
         }
+    }
+}
+
+impl<'a> TimestampedEthernetDataLinkChannelIterator<'a> for DataLinkChannelIteratorImpl<'a> {
+    fn next(&mut self) -> io::Result<TimestampedEthernetPacket> {
+        let mut caddr: libc::sockaddr_storage = unsafe { mem::zeroed() };
+        internal::recv_from(self.pc.socket.fd, &mut self.pc.read_buffer, &mut caddr)
+            .and_then(move |len| {
+                let mut tv_ioctl: libc::timeval = unsafe { mem::zeroed() };
+                if unsafe {
+                    linux::ioctl(self.pc.socket.fd,
+                                 linux::SIOCGSTAMP,
+                                 (&mut tv_ioctl as *mut libc::timeval))
+                } == -1 {
+                    Err(io::Error::last_os_error())
+                } else {
+                    Ok(TimestampedEthernetPacket(
+                        internal::timeval_to_duration(tv_ioctl),
+                        EthernetPacket::new(&self.pc.read_buffer[0..len]).unwrap()))
+                }
+            })
     }
 }
