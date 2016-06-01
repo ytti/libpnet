@@ -1,6 +1,7 @@
 extern crate libc;
 
 use std::io;
+use std::time::Duration;
 
 pub type CSocket = libc::c_int;
 pub type BufLen = libc::size_t;
@@ -24,5 +25,12 @@ pub fn retry<F>(f: &mut F) -> libc::ssize_t
         if ret != minus1 || errno() as isize != libc::EINTR as isize {
             return ret;
         }
+    }
+}
+
+pub fn duration_to_timeval(dur: Duration) -> libc::timeval {
+    libc::timeval {
+        tv_sec: dur.as_secs() as libc::time_t,
+        tv_usec: (dur.subsec_nanos() / 1_000) as libc::suseconds_t
     }
 }

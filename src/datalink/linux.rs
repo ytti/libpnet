@@ -71,8 +71,8 @@ impl<'a> From<&'a datalink::Config> for Config {
             write_buffer_size: config.write_buffer_size,
             read_buffer_size: config.read_buffer_size,
             channel_type: config.channel_type,
-            read_timeout: None,
-            write_timeout: None,
+            read_timeout: config.read_timeout,
+            write_timeout: config.write_timeout,
         }
     }
 }

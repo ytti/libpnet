@@ -10,6 +10,7 @@
 
 use std::io;
 use std::option::Option;
+use std::time::Duration;
 
 use packet::ethernet::{EtherType, EthernetPacket, MutableEthernetPacket};
 use util::NetworkInterface;
@@ -91,6 +92,12 @@ pub struct Config {
     /// The size of buffer to use when reading packets. Defaults to 4096
     pub read_buffer_size: usize,
 
+    /// The read timeout. Defaults to None.
+    pub read_timeout: Option<Duration>,
+
+    /// The write timeout. Defaults to None.
+    pub write_timeout: Option<Duration>,
+
     /// Linux only: Specifies whether to read packets at the datalink layer or network layer.
     /// Defaults to Layer2
     pub channel_type: ChannelType,
@@ -106,7 +113,9 @@ impl Default for Config {
             write_buffer_size: 4096,
             read_buffer_size: 4096,
             channel_type: ChannelType::Layer2,
-            bpf_fd_attempts: 1000
+            bpf_fd_attempts: 1000,
+            read_timeout: None,
+            write_timeout: None,
         }
     }
 }

@@ -10,7 +10,6 @@ extern crate libc;
 
 use std::io;
 use std::mem;
-use std::time::Duration;
 
 pub use self::native::{addr_to_sockaddr, sockaddr_to_addr};
 
@@ -81,12 +80,5 @@ pub fn recv_from(socket: CSocket,
         Err(io::Error::last_os_error())
     } else {
         Ok(len as usize)
-    }
-}
-
-pub fn duration_to_timeval(dur: Duration) -> libc::timeval {
-    libc::timeval {
-        tv_sec: dur.as_secs() as libc::time_t,
-        tv_usec: (dur.subsec_nanos() / 1_000) as libc::suseconds_t
     }
 }
