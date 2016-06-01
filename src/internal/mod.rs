@@ -27,7 +27,6 @@ pub use self::windows::*;
 
 mod native;
 
-
 // Any file descriptor on unix, only sockets on Windows.
 pub struct FileDesc {
     pub fd: CSocket,
@@ -84,6 +83,6 @@ pub fn recv_from(socket: CSocket,
     }
 }
 
-pub fn timeval_to_duration(tv: libc::timeval) -> Duration {
-    Duration::new((tv.tv_sec as u64), (tv.tv_usec as u32) * 1_000)
+pub fn timespec_to_duration(tv: libc::timespec) -> Duration {
+    Duration::new((tv.tv_sec as u64), (tv.tv_nsec as u32))
 }
