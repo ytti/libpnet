@@ -17,6 +17,7 @@ use std::io;
 use std::mem;
 use std::slice;
 use std::sync::Arc;
+use std::time::Duration;
 
 use bindings::{bpf, winpcap};
 use datalink;
@@ -58,6 +59,9 @@ pub struct Config {
 
     /// The size of buffer to use when reading packets. Defaults to 4096
     pub read_buffer_size: usize,
+
+    /// The read timeout. Defaults to None.
+    pub read_timeout: Option<Duration>,
 }
 
 impl<'a> From<&'a datalink::Config> for Config {
@@ -65,6 +69,7 @@ impl<'a> From<&'a datalink::Config> for Config {
         Config {
             write_buffer_size: config.write_buffer_size,
             read_buffer_size: config.read_buffer_size,
+            read_timeout: config.read_timeout,
         }
     }
 }
@@ -74,6 +79,7 @@ impl Default for Config {
         Config {
             write_buffer_size: 4096,
             read_buffer_size: 4096,
+            read_timeout: None,
         }
     }
 }
@@ -107,7 +113,12 @@ pub fn channel(network_interface: &NetworkInterface, config: &Config)
         return Err(io::Error::last_os_error());
     }
 
-    let ret = unsafe { winpcap::PacketSetReadTimeout(adapter, 0) };
+    // Set the read timeout
+    let read_to = match config.read_timeout {
+        Some(read_to) => read_to.as_secs() * 1_000_000 + read_to.subsec_nanos() / 1_000_000,
+        None => 0
+    };
+    let ret = unsafe { winpcap::PacketSetReadTimeout(adapter, read_to) };
     if ret == 0 {
         return Err(io::Error::last_os_error());
     }
