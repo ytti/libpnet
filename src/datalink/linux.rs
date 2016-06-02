@@ -25,7 +25,7 @@ use datalink::{EthernetDataLinkChannelIterator,
                EthernetDataLinkSender,
                TimestampedEthernetDataLinkChannelIterator,
                TimestampedEthernetDataLinkReceiver,
-               TimestampedEthernetPacket};
+               EthernetPacketTimestamped};
 use datalink::ChannelType::{Layer2, Layer3};
 use internal;
 use packet::Packet;
@@ -73,7 +73,7 @@ impl<'a> From<&'a datalink::Config> for Config {
             write_buffer_size: config.write_buffer_size,
             read_buffer_size: config.read_buffer_size,
             channel_type: config.channel_type,
-            receive_hardware_timestamps: false,
+            receive_hardware_timestamps: config.receive_hardware_timestamps,
         }
     }
 }
@@ -104,13 +104,18 @@ pub fn channel(network_interface: &NetworkInterface, config: &Config)
     }
     let mut addr: libc::sockaddr_storage = unsafe { mem::zeroed() };
     let len = network_addr_to_sockaddr(network_interface, &mut addr, proto as i32);
+    let mut can_receive_hardware_timestamps = true;
 
     // Enable hardware timestamps
     if config.receive_hardware_timestamps {
         // ioctl to set up hardware timestamping
         let mut hwtstamp: linux::ifreq = unsafe { mem::zeroed() };
         let mut hwconfig: linux::hwtstamp_config = unsafe { mem::zeroed() };
-        hwtstamp.ifr_name.clone_from_slice(network_interface.name.as_bytes());
+        {
+            let mut ifr_name_subset = &mut hwtstamp.ifr_name[0..network_interface.name.len()];
+            ifr_name_subset.clone_from_slice(network_interface.name.as_bytes());
+        }
+        hwtstamp.ifr_name[network_interface.name.len()] = '\0' as u8;
         hwtstamp.ifr_data = (&mut hwconfig as *mut linux::hwtstamp_config) as *mut libc::c_char;
         hwconfig.tx_type = linux::HWTSTAMP_TX_OFF;
         hwconfig.rx_filter = linux::HWTSTAMP_FILTER_ALL;
@@ -119,15 +124,11 @@ pub fn channel(network_interface: &NetworkInterface, config: &Config)
                          linux::SIOCSHWTSTAMP,
                          (&mut hwtstamp as *mut linux::ifreq) as *mut libc::c_void)
         } < 0 {
-            let err = io::Error::last_os_error();
-            unsafe {
-                internal::close(socket);
-            }
-            return Err(err);
+            can_receive_hardware_timestamps = false;
         }
 
         // Set the sockopt for timestamping
-        let timestamp_flags = linux::SOF_TIMESTAMPING_RX_HARDWARE;
+        let timestamp_flags = linux::SOF_TIMESTAMPING_RX_HARDWARE | linux::SOF_TIMESTAMPING_RX_SOFTWARE;
         if unsafe {
             libc::setsockopt(socket,
                              libc::SOL_SOCKET,
@@ -135,11 +136,7 @@ pub fn channel(network_interface: &NetworkInterface, config: &Config)
                              (&timestamp_flags as *const libc::c_uint) as *const libc::c_void,
                              mem::size_of::<libc::c_uint>() as u32)
         } == -1 {
-            let err = io::Error::last_os_error();
-            unsafe {
-                internal::close(socket);
-            }
-            return Err(err);
+            can_receive_hardware_timestamps = false;
         }
     }
 
@@ -187,7 +184,7 @@ pub fn channel(network_interface: &NetworkInterface, config: &Config)
         _channel_type: config.channel_type,
     });
 
-    if config.receive_hardware_timestamps {
+    if config.receive_hardware_timestamps && can_receive_hardware_timestamps {
         Ok(TimestampedEthernet(sender, receiver))
     } else {
         Ok(Ethernet(sender, receiver))
@@ -287,7 +284,7 @@ impl<'a> EthernetDataLinkChannelIterator<'a> for DataLinkChannelIteratorImpl<'a>
 }
 
 impl<'a> TimestampedEthernetDataLinkChannelIterator<'a> for DataLinkChannelIteratorImpl<'a> {
-    fn next(&mut self) -> io::Result<TimestampedEthernetPacket> {
+    fn next(&mut self) -> io::Result<EthernetPacketTimestamped> {
         #[repr(C)]
         struct Control {
             cm: linux::cmsghdr,
@@ -305,7 +302,7 @@ impl<'a> TimestampedEthernetDataLinkChannelIterator<'a> for DataLinkChannelItera
                 let cmsg_type = unsafe { (*cmsg).cmsg_type };
                 if cmsg_level == libc::SOL_SOCKET && cmsg_type == linux::SO_TIMESTAMPING {
                     let stamp: *const libc::timespec = unsafe { linux::cmsg_data(cmsg) as *const libc::timespec };
-                    return Ok(TimestampedEthernetPacket(
+                    return Ok((
                         unsafe { internal::timespec_to_duration(*stamp) },
                         EthernetPacket::new(&self.pc.read_buffer[0..len]).unwrap()
                     ));

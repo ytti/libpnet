@@ -60,7 +60,7 @@ pub enum ChannelType {
 }
 
 /// Type of timestamped Ethernet packet (Linux only)
-pub struct TimestampedEthernetPacket<'a>(Duration, EthernetPacket<'a>);
+pub type EthernetPacketTimestamped<'a> = (Duration, EthernetPacket<'a>);
 
 /// A channel for sending and receiving at the data link layer
 ///
@@ -104,6 +104,10 @@ pub struct Config {
     /// Defaults to Layer2
     pub channel_type: ChannelType,
 
+    /// Linux only: Specifies whether to receive hardware timestamps.
+    /// Defaults to false
+    pub receive_hardware_timestamps: bool,
+
     /// BPF/OS X only: The number of /dev/bpf* file descriptors to attempt before failing. Defaults
     /// to: 1000
     pub bpf_fd_attempts: usize
@@ -116,6 +120,7 @@ impl Default for Config {
             read_buffer_size: 4096,
             channel_type: ChannelType::Layer2,
             bpf_fd_attempts: 1000,
+            receive_hardware_timestamps: false,
         }
     }
 }
@@ -194,4 +199,4 @@ macro_rules! dlr {
 dlr!(EthernetDataLinkReceiver, EthernetDataLinkChannelIterator, EthernetPacket);
 dlr!(TimestampedEthernetDataLinkReceiver,
      TimestampedEthernetDataLinkChannelIterator,
-     TimestampedEthernetPacket);
+     EthernetPacketTimestamped);
