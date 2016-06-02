@@ -395,7 +395,7 @@ fn layer2() {
 }
 
 #[test]
-fn layer4_timeouts() {
+fn layer2_timeouts() {
     use std::time::Duration;
     use std::io::ErrorKind;
     use datalink;
