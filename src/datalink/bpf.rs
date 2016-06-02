@@ -35,6 +35,9 @@ pub struct Config {
     /// The size of buffer to use when reading packets. Defaults to 4096
     pub read_buffer_size: usize,
 
+    /// The read timeout. Defaults to None.
+    pub read_timeout: Option<Duration>,
+
     /// The number of /dev/bpf* file descriptors to attempt before failing.
     ///
     /// This setting is only used on OS X - FreeBSD uses a single /dev/bpf rather than creating a
@@ -50,6 +53,7 @@ impl<'a> From<&'a datalink::Config> for Config {
             write_buffer_size: config.write_buffer_size,
             read_buffer_size: config.read_buffer_size,
             bpf_fd_attempts: config.bpf_fd_attempts,
+            read_timeout: config.read_timeout,
         }
     }
 }
@@ -60,8 +64,24 @@ impl Default for Config {
             write_buffer_size: 4096,
             read_buffer_size: 4096,
             bpf_fd_attempts: 1000,
+            read_timeout: None,
         }
     }
+}
+
+#[inline]
+fn set_timeout(fd: i32, to: Duration, ioctl_num: libc::c_ulong) -> io::Result<()> {
+    let timeout = internal::duration_to_timeval(to);
+    if unsafe {
+        bpf::ioctl(fd, ioctl_num, (&timeout as *const libc::timeval))
+    } < 0 {
+        let err = io::Error::last_os_error();
+        unsafe {
+            libc::close(fd);
+        }
+        return Err(err);
+    }
+    Ok(())
 }
 
 /// Create a datalink channel using the /dev/bpf device
@@ -186,6 +206,11 @@ pub fn channel(network_interface: &NetworkInterface, config: &Config)
             }
             return Err(err);
         }
+    }
+
+    // Set timeouts
+    if let Some(read_to) = config.read_timeout {
+        try!(set_timeout(fd, read_to, bpf::BIOCSRTIMEOUT));
     }
 
     let fd = Arc::new(internal::FileDesc { fd: fd });
