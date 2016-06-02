@@ -54,6 +54,7 @@ type nfds_t = libc::c_ulong;
 
 extern {
     fn poll(fds: *mut pollfd, nfds: nfds_t, timeout: libc::c_int) -> libc::c_int;
+    fn ppoll(fds: *mut pollfd, nfds: nfds_t, timeout: *const libc::timespec, newsigmask: *const libc::sigset_t) -> libc::c_int;
 }
 
 struct NmDesc {
@@ -95,23 +96,46 @@ impl Drop for NmDesc {
 
 /// Netmap specific configuration
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct Config;
+pub struct Config {
+    /// The read timeout. Defaults to None.
+    pub read_timeout: Option<Duration>,
+
+    /// The write timeout. Defaults to None.
+    pub write_timeout: Option<Duration>,
+}
 
 impl<'a> From<&'a datalink::Config> for Config {
     fn from(_config: &datalink::Config) -> Config {
-        Config
+        Config {
+            read_timeout: config.read_timeout,
+            write_timeout: config.write_timeout,
+        }
     }
 }
 
 impl Default for Config {
     fn default() -> Config {
-        Config
+        Config {
+            read_timeout: None,
+            write_timeout: None,
+        }
+    }
+}
+
+#[inline]
+fn get_timeout(to: Option<Duration>) -> *const libc::timespec {
+    match to {
+        Some(to) => &libc::timespec {
+            tv_sec: to.as_secs() as libc::time_t,
+            tv_nsec: to.subsec_nanos() as libc::c_long
+        } as *const libc::timespec,
+        None => ptr::null()
     }
 }
 
 /// Create a datalink channel using the netmap library
 #[inline]
-pub fn channel(network_interface: &NetworkInterface, _config: &Config)
+pub fn channel(network_interface: &NetworkInterface, config: &Config)
     -> io::Result<datalink::Channel> {
     // FIXME probably want one for each of send/recv
     let desc = NmDesc::new(network_interface);
@@ -119,8 +143,15 @@ pub fn channel(network_interface: &NetworkInterface, _config: &Config)
         Ok(desc) => {
             let arc = Arc::new(desc);
 
-            Ok(Ethernet(Box::new(DataLinkSenderImpl { desc: arc.clone() }),
-                        Box::new(DataLinkReceiverImpl { desc: arc })))
+            Ok(Ethernet(
+                Box::new(DataLinkSenderImpl {
+                    desc: arc.clone(),
+                    timeout: get_timeout(config.write_timeout)
+                }),
+                Box::new(DataLinkReceiverImpl {
+                    desc: arc,
+                    timeout: get_timeout(config.read_timeout)
+                })))
         }
         Err(e) => Err(e),
     }
@@ -128,6 +159,7 @@ pub fn channel(network_interface: &NetworkInterface, _config: &Config)
 
 struct DataLinkSenderImpl {
     desc: Arc<NmDesc>,
+    timeout: *const libc::timespec,
 }
 
 impl EthernetDataLinkSender for DataLinkSenderImpl {
@@ -147,7 +179,7 @@ impl EthernetDataLinkSender for DataLinkSenderImpl {
         let mut packet_idx = 0usize;
         while packet_idx < num_packets {
             unsafe {
-                if poll(&mut fds, 1, -1) < 0 {
+                if ppoll(&mut fds, 1, self.timeout, ptr::null()) < 0 {
                     return Some(Err(io::Error::last_os_error()));
                 }
                 let ring = NETMAP_TXRING((*desc).nifp, 0);
@@ -186,6 +218,7 @@ impl EthernetDataLinkSender for DataLinkSenderImpl {
 
 struct DataLinkReceiverImpl {
     desc: Arc<NmDesc>,
+    timeout: *const libc::timespec,
 }
 
 impl EthernetDataLinkReceiver for DataLinkReceiverImpl {
@@ -210,7 +243,7 @@ impl<'a> EthernetDataLinkChannelIterator<'a> for DataLinkChannelIteratorImpl<'a>
                 events: POLLIN,
                 revents: 0,
             };
-            if unsafe { poll(&mut fds, 1, -1) } < 0 {
+            if unsafe { ppoll(&mut fds, 1, self.timeout, ptr::null()) } < 0 {
                 return Err(io::Error::last_os_error());
             }
             buf = unsafe { nm_nextpkt(desc, &mut h) };
