@@ -95,7 +95,8 @@ pub struct Config {
     /// The read timeout. Defaults to None.
     pub read_timeout: Option<Duration>,
 
-    /// The write timeout. Defaults to None.
+    /// The write timeout. Has no effect on the WinPcap backend.
+    /// Defaults to None.
     pub write_timeout: Option<Duration>,
 
     /// Linux only: Specifies whether to read packets at the datalink layer or network layer.
