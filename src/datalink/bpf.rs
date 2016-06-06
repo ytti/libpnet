@@ -17,6 +17,7 @@ use std::iter::repeat;
 use std::mem;
 use std::sync::Arc;
 use std::ptr;
+use std::time::Duration;
 
 use bindings::bpf;
 use packet::Packet;
@@ -220,18 +221,17 @@ pub fn channel(network_interface: &NetworkInterface, config: &Config)
     }
 
     let fd = Arc::new(internal::FileDesc { fd: fd });
-    let sender = Box::new(DataLinkSenderImpl {
+    let mut sender = Box::new(DataLinkSenderImpl {
         fd: fd.clone(),
         fd_set: unsafe { mem::zeroed() },
         write_buffer: repeat(0u8).take(config.write_buffer_size).collect(),
         loopback: loopback,
-        timeout: match config.write_timeout {
-            Some(to) => (&internal::duration_to_timeval(to) as *const libc::timeval),
-            None => ptr::null()
-        }
+        timeout: config.write_timeout.map(|to| internal::duration_to_timeval(to))
     });
-    libc::FD_ZERO(&mut sender.fd_set as *mut libc::fd_set);
-    libc::FD_SET(fd.fd, &mut sender.fd_set as *mut libc::fd_set);
+    unsafe {
+        libc::FD_ZERO(&mut sender.fd_set as *mut libc::fd_set);
+        libc::FD_SET(fd.fd, &mut sender.fd_set as *mut libc::fd_set);
+    }
     let receiver = Box::new(DataLinkReceiverImpl {
         fd: fd,
         read_buffer: repeat(0u8).take(allocated_read_buffer_size).collect(),
@@ -246,7 +246,7 @@ struct DataLinkSenderImpl {
     fd_set: libc::fd_set,
     write_buffer: Vec<u8>,
     loopback: bool,
-    timeout: *const libc::timeval,
+    timeout: Option<libc::timeval>,
 }
 
 impl EthernetDataLinkSender for DataLinkSenderImpl {
@@ -275,9 +275,10 @@ impl EthernetDataLinkSender for DataLinkSenderImpl {
                 if unsafe {
                     libc::select(1,
                                  &mut self.fd_set as *mut libc::fd_set,
-                                 ptr::null(),
-                                 ptr::null(),
-                                 self.timeout)
+                                 ptr::null_mut(),
+                                 ptr::null_mut(),
+                                 self.timeout.map(|mut to| &mut to as *mut libc::timeval)
+                                 .unwrap_or(ptr::null_mut()))
                 } == -1 {
                     // Error occured!
                     return Some(Err(io::Error::last_os_error()));
@@ -311,9 +312,10 @@ impl EthernetDataLinkSender for DataLinkSenderImpl {
         if unsafe {
             libc::select(1,
                          &mut self.fd_set as *mut libc::fd_set,
-                         ptr::null(),
-                         ptr::null(),
-                         self.timeout)
+                         ptr::null_mut(),
+                         ptr::null_mut(),
+                         self.timeout.map(|mut to| &mut to as *mut libc::timeval)
+                         .unwrap_or(ptr::null_mut()))
         } == -1 {
             // Error occured!
             return Some(Err(io::Error::last_os_error()));

@@ -115,9 +115,9 @@ pub fn channel(network_interface: &NetworkInterface, config: &Config)
 
     // Set the read timeout
     let read_to = match config.read_timeout {
-        Some(read_to) => read_to.as_secs() * 1_000_000 + read_to.subsec_nanos() / 1_000_000,
+        Some(read_to) => read_to.as_secs() * 1_000_000 + (read_to.subsec_nanos() / 1_000_000) as u64,
         None => 0
-    };
+    } as i32;
     let ret = unsafe { winpcap::PacketSetReadTimeout(adapter, read_to) };
     if ret == 0 {
         return Err(io::Error::last_os_error());
