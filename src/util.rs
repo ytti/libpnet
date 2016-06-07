@@ -20,7 +20,6 @@ use std::u8;
 use std::net::IpAddr;
 
 
-#[cfg(not(windows))]
 use internal;
 
 /// A MAC address
@@ -149,7 +148,7 @@ impl NetworkInterface {
 
     /// Is the interface a loopback interface?
     pub fn is_loopback(&self) -> bool {
-        self.flags & (libc::IFF_LOOPBACK as u32) != 0
+        self.flags & (internal::IFF_LOOPBACK as u32) != 0
     }
 }
 

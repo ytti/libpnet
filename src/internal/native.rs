@@ -114,7 +114,7 @@ pub fn sockaddr_to_addr(storage: &libc::sockaddr_storage, len: usize) -> io::Res
             #[cfg(unix)]
             use libc::EINVAL as ERROR;
             #[cfg(windows)]
-            use libc::WSAEINVAL as ERROR;
+            use winapi::winerror::WSAEINVAL as ERROR;
             Err(io::Error::from_raw_os_error(ERROR))
         }
     }
