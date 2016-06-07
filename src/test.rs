@@ -423,12 +423,9 @@ fn layer2_timeouts() {
     let (tx, rx) = channel();
 
     let cfg = datalink::Config {
-        write_buffer_size: 4096,
-        read_buffer_size: 4096,
-        channel_type: datalink::ChannelType::Layer2,
-        bpf_fd_attempts: 100,
         read_timeout: Some(Duration::from_millis(300)),
-        write_timeout: Some(Duration::from_millis(100))
+        write_timeout: Some(Duration::from_millis(100)),
+        ..Default::default()
     };
     let dlc = datalink::channel(&interface, &cfg);
     let (_, mut dlrx) = match dlc {
