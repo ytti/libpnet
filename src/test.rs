@@ -354,8 +354,15 @@ fn layer2() {
 
     let (tx, rx) = channel();
 
-    let dlc = datalink::channel(&interface, &Default::default());
-    let (mut dltx, mut dlrx) = match dlc {
+    let dlc_sidea = datalink::channel(&interface, &Default::default());
+    let (mut dltx, _) = match dlc_sidea {
+        Ok(Ethernet(tx, rx)) => (tx, rx),
+        Ok(_) => panic!("layer2: unexpected L2 packet type"),
+        Err(e) => panic!("layer2: unable to create channel: {}", e),
+    };
+
+    let dlc_sideb = datalink::channel(&interface, &Default::default());
+    let (_, mut dlrx) = match dlc_sideb {
         Ok(Ethernet(tx, rx)) => (tx, rx),
         Ok(_) => panic!("layer2: unexpected L2 packet type"),
         Err(e) => panic!("layer2: unable to create channel: {}", e),
@@ -400,7 +407,7 @@ fn layer2_timeouts() {
     use std::io::ErrorKind;
     use datalink;
     use datalink::Channel::Ethernet;
-    use packet::ethernet::{EtherTypes, MutableEthernetPacket};
+    use packet::ethernet::{EtherTypes, EthernetPacket, MutableEthernetPacket};
 
     const ETHERNET_HEADER_LEN: usize = 14;
 
@@ -423,24 +430,33 @@ fn layer2_timeouts() {
     let (tx, rx) = channel();
 
     let cfg = datalink::Config {
-        read_timeout: Some(Duration::from_millis(300)),
+        read_timeout: Some(Duration::from_millis(30)),
         write_timeout: Some(Duration::from_millis(100)),
         ..Default::default()
     };
-    let dlc = datalink::channel(&interface, &cfg);
-    let (_, mut dlrx) = match dlc {
+    let dlc_sidea = datalink::channel(&interface, &cfg);
+    let (_, mut dlrx) = match dlc_sidea {
         Ok(Ethernet(tx, rx)) => (tx, rx),
         Ok(_) => panic!("layer2_timeouts: unexpected L2 packet type"),
         Err(e) => panic!("layer2_timeouts: unable to create channel: {}", e),
     };
 
+    let dlc_sideb = datalink::channel(&interface, &cfg);
+    let (mut dltx, _) = match dlc_sideb {
+        Ok(Ethernet(tx, rx)) => (tx, rx),
+        Ok(_) => panic!("layer2_timeouts: unexpected L2 packet type"),
+        Err(e) => panic!("layer2_timeouts: unable to create channel: {}", e),
+    };
+
+    let packet_len = packet.len();
     let res = thread::spawn(move || {
         tx.send(()).unwrap();
         let mut iter = dlrx.iter();
         loop {
             match iter.next() {
-                Ok(_) => {
-                    panic!("layer2_timeouts: should have exceeded timeout");
+                Ok(eh) => {
+                    panic!("layer2_timeouts: should have exceeded timeout ({}/{})",
+                           eh.packet().len(), packet_len);
                 },
                 Err(e) => {
                     assert!(e.kind() == ErrorKind::WouldBlock);
@@ -451,7 +467,11 @@ fn layer2_timeouts() {
     rx.recv().unwrap();
     // Wait a while
     thread::sleep(Duration::from_millis(1000));
-    // don't even send anything
+    match dltx.send_to(&EthernetPacket::new(&packet[..]).unwrap(), None) {
+        Some(Ok(())) => (),
+        Some(Err(e)) => panic!("layer2_test failed: {}", e),
+        None => panic!("Provided buffer too small"),
+    }
     assert!(res.join().is_ok())
 }
 
