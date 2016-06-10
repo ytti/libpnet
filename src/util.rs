@@ -19,8 +19,8 @@ use std::mem;
 use std::u8;
 use std::net::IpAddr;
 
-
 use internal;
+use sockets;
 
 /// A MAC address
 #[derive(PartialEq, Eq, Clone, Copy, Hash)]
@@ -148,7 +148,7 @@ impl NetworkInterface {
 
     /// Is the interface a loopback interface?
     pub fn is_loopback(&self) -> bool {
-        self.flags & (internal::IFF_LOOPBACK as u32) != 0
+        self.flags & (sockets::IFF_LOOPBACK as u32) != 0
     }
 }
 

@@ -23,6 +23,7 @@ use datalink::Channel::Ethernet;
 use datalink::{EthernetDataLinkChannelIterator, EthernetDataLinkReceiver, EthernetDataLinkSender};
 use datalink::ChannelType::{Layer2, Layer3};
 use internal;
+use sockets;
 use packet::Packet;
 use packet::ethernet::{EtherType, EthernetPacket, MutableEthernetPacket};
 use util::{MacAddr, NetworkInterface};
@@ -93,7 +94,7 @@ impl Default for Config {
 fn set_timeout_sockopt(socket: i32, to: Duration, sockopt: i32) -> io::Result<()> {
     let timeout = internal::duration_to_timeval(to);
     if unsafe {
-        libc::setsockopt(socket,
+        sockets::setsockopt(socket,
                          libc::SOL_SOCKET,
                          sockopt,
                          (&timeout as *const libc::timeval) as *const libc::c_void,
@@ -101,7 +102,7 @@ fn set_timeout_sockopt(socket: i32, to: Duration, sockopt: i32) -> io::Result<()
     } == -1 {
         let err = io::Error::last_os_error();
         unsafe {
-            internal::close(socket);
+            sockets::close(socket);
         }
         return Err(err);
     }
@@ -138,7 +139,7 @@ pub fn channel(network_interface: &NetworkInterface, config: &Config)
     if unsafe { libc::bind(socket, send_addr, len as libc::socklen_t) } == -1 {
         let err = io::Error::last_os_error();
         unsafe {
-            internal::close(socket);
+            sockets::close(socket);
         }
         return Err(err);
     }
@@ -157,7 +158,7 @@ pub fn channel(network_interface: &NetworkInterface, config: &Config)
     } == -1 {
         let err = io::Error::last_os_error();
         unsafe {
-            internal::close(socket);
+            sockets::close(socket);
         }
         return Err(err);
     }
