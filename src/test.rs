@@ -459,7 +459,8 @@ fn layer2_timeouts() {
                            eh.packet().len(), packet_len);
                 },
                 Err(e) => {
-                    assert!(e.kind() == ErrorKind::WouldBlock);
+                    assert!(e.kind() == ErrorKind::TimedOut);
+                    return;
                 }
             }
         }
