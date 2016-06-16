@@ -96,14 +96,15 @@ pub fn sockaddr_to_addr(storage: &sockets::SockAddrStorage, len: usize) -> io::R
         sockets::AF_INET6 => {
             assert!(len as usize >= mem::size_of::<sockets::SockAddrIn6>());
             let storage: &sockets::SockAddrIn6 = unsafe { mem::transmute(storage) };
-            let a = ntohs(read_u16be(&storage.sin6_addr.s6_addr[0..2]));
-            let b = ntohs(read_u16be(&storage.sin6_addr.s6_addr[2..4]));
-            let c = ntohs(read_u16be(&storage.sin6_addr.s6_addr[4..6]));
-            let d = ntohs(read_u16be(&storage.sin6_addr.s6_addr[6..8]));
-            let e = ntohs(read_u16be(&storage.sin6_addr.s6_addr[8..10]));
-            let f = ntohs(read_u16be(&storage.sin6_addr.s6_addr[10..12]));
-            let g = ntohs(read_u16be(&storage.sin6_addr.s6_addr[12..14]));
-            let h = ntohs(read_u16be(&storage.sin6_addr.s6_addr[14..16]));
+            let arr : [u16; 8] = unsafe { mem::transmute(storage.sin6_addr.s6_addr) };
+            let a = ntohs(arr[0]);
+            let b = ntohs(arr[1]);
+            let c = ntohs(arr[2]);
+            let d = ntohs(arr[3]);
+            let e = ntohs(arr[4]);
+            let f = ntohs(arr[5]);
+            let g = ntohs(arr[6]);
+            let h = ntohs(arr[7]);
             let ip = Ipv6Addr::new(a, b, c, d, e, f, g, h);
             Ok(SocketAddr::V6(SocketAddrV6::new(ip,
                                                 ntohs(storage.sin6_port),
