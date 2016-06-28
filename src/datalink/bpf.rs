@@ -220,7 +220,7 @@ pub fn channel(network_interface: &NetworkInterface, config: &Config)
         fd_set: unsafe { mem::zeroed() },
         write_buffer: repeat(0u8).take(config.write_buffer_size).collect(),
         loopback: loopback,
-        timeout: config.write_timeout.map(|to| internal::duration_to_timeval(to))
+        timeout: config.write_timeout.map(|to| internal::duration_to_timespec(to))
     });
     unsafe {
         libc::FD_ZERO(&mut sender.fd_set as *mut libc::fd_set);
@@ -231,7 +231,7 @@ pub fn channel(network_interface: &NetworkInterface, config: &Config)
         fd_set: unsafe { mem::zeroed() },
         read_buffer: repeat(0u8).take(allocated_read_buffer_size).collect(),
         loopback: loopback,
-        timeout: config.read_timeout.map(|to| internal::duration_to_timeval(to))
+        timeout: config.read_timeout.map(|to| internal::duration_to_timespec(to))
     });
     unsafe {
         libc::FD_ZERO(&mut receiver.fd_set as *mut libc::fd_set);
@@ -246,7 +246,7 @@ struct DataLinkSenderImpl {
     fd_set: libc::fd_set,
     write_buffer: Vec<u8>,
     loopback: bool,
-    timeout: Option<libc::timeval>,
+    timeout: Option<libc::timespec>,
 }
 
 impl EthernetDataLinkSender for DataLinkSenderImpl {
@@ -273,12 +273,13 @@ impl EthernetDataLinkSender for DataLinkSenderImpl {
                     func(eh);
                 }
                 let ret = unsafe {
-                    libc::select(self.fd.fd + 1,
-                                 ptr::null_mut(),
-                                 &mut self.fd_set as *mut libc::fd_set,
-                                 ptr::null_mut(),
-                                 self.timeout.map(|mut to| &mut to as *mut libc::timeval)
-                                 .unwrap_or(ptr::null_mut()))
+                    libc::pselect(self.fd.fd + 1,
+                                  ptr::null_mut(),
+                                  &mut self.fd_set as *mut libc::fd_set,
+                                  ptr::null_mut(),
+                                  self.timeout.map(|to| &to as *const libc::timespec)
+                                  .unwrap_or(ptr::null()),
+                                  ptr::null())
                 };
                 if ret == -1 {
                     // Error occured!
@@ -313,12 +314,13 @@ impl EthernetDataLinkSender for DataLinkSenderImpl {
             0
         };
         let ret = unsafe {
-            libc::select(self.fd.fd + 1,
-                         ptr::null_mut(),
-                         &mut self.fd_set as *mut libc::fd_set,
-                         ptr::null_mut(),
-                         self.timeout.map(|mut to| &mut to as *mut libc::timeval)
-                         .unwrap_or(ptr::null_mut()))
+            libc::pselect(self.fd.fd + 1,
+                          ptr::null_mut(),
+                          &mut self.fd_set as *mut libc::fd_set,
+                          ptr::null_mut(),
+                          self.timeout.map(|to| &to as *const libc::timespec)
+                          .unwrap_or(ptr::null()),
+                          ptr::null())
         };
         if ret == -1 {
             // Error occured!
@@ -343,7 +345,7 @@ struct DataLinkReceiverImpl {
     fd_set: libc::fd_set,
     read_buffer: Vec<u8>,
     loopback: bool,
-    timeout: Option<libc::timeval>,
+    timeout: Option<libc::timespec>,
 }
 
 impl EthernetDataLinkReceiver for DataLinkReceiverImpl {
@@ -374,12 +376,13 @@ impl<'a> EthernetDataLinkChannelIterator<'a> for DataLinkChannelIteratorImpl<'a>
         if self.packets.is_empty() {
             let buffer = &mut self.pc.read_buffer[buffer_offset..];
             let ret = unsafe {
-                libc::select(self.pc.fd.fd + 1,
-                             &mut self.pc.fd_set as *mut libc::fd_set,
-                             ptr::null_mut(),
-                             ptr::null_mut(),
-                             self.pc.timeout.map(|mut to| &mut to as *mut libc::timeval)
-                             .unwrap_or(ptr::null_mut()))
+                libc::pselect(self.pc.fd.fd + 1,
+                              &mut self.pc.fd_set as *mut libc::fd_set,
+                              ptr::null_mut(),
+                              ptr::null_mut(),
+                              self.pc.timeout.map(|to| &to as *const libc::timespec)
+                              .unwrap_or(ptr::null()),
+                              ptr::null())
             };
             if ret == -1 {
                 return Err(io::Error::last_os_error())
