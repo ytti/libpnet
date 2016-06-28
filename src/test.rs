@@ -402,6 +402,7 @@ fn layer2() {
 }
 
 #[test]
+#[cfg(not(windows))]
 fn layer2_timeouts() {
     use std::time::Duration;
     use std::io::ErrorKind;
